@@ -1,6 +1,6 @@
 {
 	"name": "bom-api",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"main": "dist/main.js",
 	"type": "module",
 	"scripts": {
@@ -19,23 +19,23 @@
 		"url": "git+https://github.com/bitfocus/companion-module-bom-api.git"
 	},
 	"dependencies": {
-		"@companion-module/base": "~1.11.3",
-		"axios": "^1.9.0",
+		"@companion-module/base": "~1.12.1",
+		"axios": "^1.11.0",
 		"lodash": "~4.17.21",
 		"p-queue": "^8.1.0",
-		"zod": "^3.25.42"
+		"zod": "^4.0.17"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.3.0",
-		"@types/lodash": "4.17.17",
-		"@types/node": "^22.15.27",
-		"eslint": "^9.27.0",
+		"@types/lodash": "4.17.20",
+		"@types/node": "^22.18.0",
+		"eslint": "^9.33.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^16.1.0",
-		"prettier": "^3.5.3",
+		"lint-staged": "^16.1.5",
+		"prettier": "^3.6.2",
 		"rimraf": "^6.0.1",
 		"typescript": "~5.8.3",
-		"typescript-eslint": "^8.33.0"
+		"typescript-eslint": "^8.39.0"
 	},
 	"engines": {
 		"node": "^22.15"
@@ -49,5 +49,5 @@
 			"yarn lint:raw --fix"
 		]
 	},
-	"packageManager": "yarn@4.9.1"
+	"packageManager": "yarn@4.9.4"
 }
