@@ -3,25 +3,33 @@ import type { CompanionVariableDefinitions, CompanionVariableValues } from '@com
 import { UpdateVariableDefinitions, UpdateVariableValues, type VariablesSchema } from '../variables.js'
 import {
 	ForecastRequest,
+	HourlyForecastResponse,
 	LocationInformationResponse,
 	ObservationResponse,
 	WarningResponse,
 	type Oberservation,
 } from '../interfaces.js'
 import type BomAPI from '../main.js'
-import { dailyForecastResponse, locationInfoResponse, observationResponse, warningsResponse } from './fixtures.js'
+import {
+	dailyForecastResponse,
+	hourlyForecastResponse,
+	locationInfoResponse,
+	observationResponse,
+	warningsResponse,
+} from './fixtures.js'
 
 function fakeInstance() {
 	const daily = ForecastRequest.parse(dailyForecastResponse)
+	const hourly = HourlyForecastResponse.parse(hourlyForecastResponse)
 	return {
 		locationInformation: LocationInformationResponse.parse(locationInfoResponse).data,
 		observation: ObservationResponse.parse(observationResponse).data as Oberservation | undefined,
 		warnings: WarningResponse.parse(warningsResponse).data,
 		forecastDaily: daily.data,
-		forecastHourly: daily.data,
+		forecastHourly: hourly.data,
 		recentUpdate: daily.metadata.response_timestamp,
 		forecastDailyIssuedAt: daily.metadata.issue_time,
-		forecaseHourlyIssuedAt: daily.metadata.issue_time,
+		forecaseHourlyIssuedAt: hourly.metadata.issue_time,
 		setVariableDefinitions: vi.fn<(defs: CompanionVariableDefinitions<VariablesSchema>) => void>(),
 		setVariableValues: vi.fn<(values: CompanionVariableValues) => void>(),
 	}
@@ -48,7 +56,10 @@ describe('variables', () => {
 		expect(definitions['mostRecentData']).toEqual({ name: 'Most Recent Data' })
 		expect(definitions['obs_wind_direction']).toEqual({ name: 'Observation: wind - direction' })
 		expect(definitions['fc_day_0_rain_amount_max']).toEqual({ name: 'Daily Forecast [0]: rain - amount - max' })
-		expect(definitions['fc_hour_1_temp_min']).toEqual({ name: 'Hourly Forecast [1]: temp_min' })
+		expect(definitions['fc_hour_1_dew_point']).toEqual({ name: 'Hourly Forecast [1]: dew_point' })
+		expect(definitions['fc_hour_0_wind_gust_speed_kilometre']).toEqual({
+			name: 'Hourly Forecast [0]: wind - gust_speed_kilometre',
+		})
 		expect(definitions['warn_0_title']).toEqual({ name: 'Warning [0]: title' })
 	})
 
@@ -65,10 +76,16 @@ describe('variables', () => {
 			fc_day_0_now_temp_later: 18,
 			fc_day_1_rain_chance: 85,
 			fc_day_1_temp_min: 10,
+			fc_hour_issued_at: '2026-10-11T07:30:59Z',
+			fc_hour_0_time: '2026-10-11T07:00:00Z',
+			fc_hour_0_wind_gust_speed_kilometre: 33,
+			fc_hour_1_rain_amount_max: 1,
+			fc_hour_1_is_night: true,
 		})
 		// Nulls from the API become undefined
 		expect(values).toHaveProperty('fc_day_0_temp_min', undefined)
 		expect(values).toHaveProperty('fc_day_1_fire_danger_category_default_colour', undefined)
+		expect(values).toHaveProperty('fc_hour_0_rain_amount_max', undefined)
 	})
 
 	it('only defines the forecast fields each day carries', () => {

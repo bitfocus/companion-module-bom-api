@@ -4,22 +4,17 @@ import { InstanceStatus } from '@companion-module/base'
 import BomAPI from '../main.js'
 import { searchBy, type ModuleConfig } from '../config.js'
 import { StatusManager } from '../status.js'
-import { dailyForecastResponse, locationInfoResponse, observationResponse, warningsResponse } from './fixtures.js'
+import {
+	dailyForecastResponse,
+	hourlyForecastResponse,
+	locationInfoResponse,
+	observationResponse,
+	warningsResponse,
+} from './fixtures.js'
 
-// Enough of InstanceBase to construct the module without a Companion host
-vi.mock('@companion-module/base', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@companion-module/base')>()
-	class InstanceBase {
-		constructor(_internal: unknown) {}
-		log(): void {}
-		updateStatus(): void {}
-		setActionDefinitions(): void {}
-		setFeedbackDefinitions(): void {}
-		setVariableDefinitions(): void {}
-		setVariableValues(): void {}
-	}
-	return { ...actual, InstanceBase }
-})
+vi.mock('@companion-module/base', async (importOriginal) =>
+	(await import('./instance-base.js')).mockBase(importOriginal),
+)
 
 const CONFIG: ModuleConfig = {
 	latitude: -37.3568,
@@ -34,6 +29,7 @@ const REQUESTS_PER_UPDATE = 5
 
 function responseFor(path: string): unknown {
 	if (path.endsWith('/forecasts/daily')) return dailyForecastResponse
+	if (path.endsWith('/forecasts/hourly')) return hourlyForecastResponse
 	if (path.endsWith('/observations')) return observationResponse
 	if (path.endsWith('/warnings')) return warningsResponse
 	if (/^locations\/\w+$/.test(path)) return locationInfoResponse
@@ -64,6 +60,15 @@ describe('BomAPI', () => {
 		expect(get).toHaveBeenCalledTimes(REQUESTS_PER_UPDATE)
 		await vi.advanceTimersByTimeAsync(POLL_MS)
 		expect(get).toHaveBeenCalledTimes(2 * REQUESTS_PER_UPDATE)
+	})
+
+	it('fetches the hourly forecast from the hourly endpoint, with the 6 character geohash it requires', async () => {
+		// The hourly request went to the daily endpoint, so the hourly variables held daily forecasts
+		await instance.updateData('r1qg2z3')
+		expect(paths()).toContain('locations/r1qg2z/forecasts/hourly')
+		expect(paths().filter((path) => path.endsWith('/forecasts/daily'))).toHaveLength(1)
+		expect(instance.forecastHourly.map((hour) => hour.time)).toEqual(['2026-10-11T07:00:00Z', '2026-10-11T08:00:00Z'])
+		expect(instance.forecaseHourlyIssuedAt).toBe('2026-10-11T07:30:59Z')
 	})
 
 	it('keeps polling when the observation request fails on the first poll', async () => {

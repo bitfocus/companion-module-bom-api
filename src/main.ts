@@ -8,6 +8,8 @@ import { SearchResponse } from './interfaces.js'
 import {
 	ForecastItem,
 	ForecastRequest,
+	HourlyForecastItem,
+	HourlyForecastResponse,
 	Location,
 	LocationInformation,
 	LocationInformationResponse,
@@ -28,7 +30,7 @@ const API_PATHS = {
 	LocationInformation: (geohash: string) => `locations/${geohash}`,
 	LocationSearch: () => `locations`,
 	ForecastDaily: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/forecasts/daily`,
-	ForecastHourly: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/forecasts/hourly`,
+	ForecastHourly: (geohash: string) => `locations/${geohash.trim().substring(0, 6)}/forecasts/hourly`, //geohash must be 6 digit for Hourly Forecast
 	Observations: (geohash: string) => `locations/${geohash.trim().substring(0, 6)}/observations`, //geohash must be 6 digit for Observation Station
 	Warnings: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/warnings`,
 }
@@ -72,7 +74,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 	observation: Oberservation | undefined = undefined // Until the first observation request succeeds
 	forecastDaily: ForecastItem[] = []
 	forecastDailyIssuedAt: string = ''
-	forecastHourly: ForecastItem[] = []
+	forecastHourly: HourlyForecastItem[] = []
 	forecaseHourlyIssuedAt: string = ''
 	warnings: Warning[] = []
 	recentUpdate: string = ''
@@ -107,8 +109,8 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getForecastHourly(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash), undefined, signal)
-			const forecasts = ForecastRequest.parse(response?.data)
+			const response = await this.queryApi(API_PATHS.ForecastHourly(geohash), undefined, signal)
+			const forecasts = HourlyForecastResponse.parse(response?.data)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastHourly = forecasts.data
 			this.forecaseHourlyIssuedAt = forecasts.metadata.issue_time

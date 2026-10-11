@@ -143,3 +143,62 @@ export const dailyForecastResponse = {
 		},
 	],
 }
+
+/** Requested with the 6 character geohash (r1qg2z), as the hourly endpoint rejects 7. The real response has 73 hours */
+export const hourlyForecastResponse = {
+	metadata: { issue_time: '2026-10-11T07:30:59Z', response_timestamp: '2026-10-11T07:59:48Z', copyright: COPYRIGHT },
+	data: [
+		{
+			rain: {
+				amount: { min: 0, max: null, units: 'mm' },
+				chance: 5,
+				precipitation_amount_10_percent_chance: 0,
+				precipitation_amount_25_percent_chance: 0,
+				precipitation_amount_50_percent_chance: 0,
+			},
+			temp: 18,
+			temp_feels_like: 13,
+			dew_point: 6,
+			wind: {
+				speed_knot: 11,
+				speed_kilometre: 20,
+				direction: 'NNW',
+				gust_speed_knot: 18,
+				gust_speed_kilometre: 33,
+			},
+			relative_humidity: 47,
+			uv: 1,
+			icon_descriptor: 'sunny',
+			next_three_hourly_forecast_period: '2026-10-11T09:00:00Z',
+			time: '2026-10-11T07:00:00Z',
+			is_night: false,
+			next_forecast_period: '2026-10-11T08:00:00Z',
+		},
+		{
+			rain: {
+				amount: { min: 0, max: 1, units: 'mm' },
+				chance: 30,
+				precipitation_amount_10_percent_chance: 1,
+				precipitation_amount_25_percent_chance: 0,
+				precipitation_amount_50_percent_chance: 0,
+			},
+			temp: 16,
+			temp_feels_like: 11,
+			dew_point: 7,
+			wind: {
+				speed_knot: 10,
+				speed_kilometre: 19,
+				direction: 'N',
+				gust_speed_knot: 17,
+				gust_speed_kilometre: 31,
+			},
+			relative_humidity: 55,
+			uv: 0,
+			icon_descriptor: 'mostly_sunny',
+			next_three_hourly_forecast_period: '2026-10-11T09:00:00Z',
+			time: '2026-10-11T08:00:00Z',
+			is_night: true,
+			next_forecast_period: '2026-10-11T09:00:00Z',
+		},
+	],
+}

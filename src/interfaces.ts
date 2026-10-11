@@ -118,6 +118,52 @@ export const ForecastRequest = z.compile(
 
 export type ForecastRequest = z.infer<typeof ForecastRequest>
 
+// Measured and forecast values are nullable, as the API sends null for a value it has none for
+export const HourlyForecastItem = z.object({
+	rain: z.object({
+		amount: z.object({
+			min: z.number().min(0).nullable(),
+			max: z.number().min(0).nullable(),
+			units: z.string().nullable(),
+		}),
+		chance: z.number().min(0).max(100).nullable(),
+		precipitation_amount_10_percent_chance: z.number().min(0).nullable(),
+		precipitation_amount_25_percent_chance: z.number().min(0).nullable(),
+		precipitation_amount_50_percent_chance: z.number().min(0).nullable(),
+	}),
+	temp: z.number().nullable(),
+	temp_feels_like: z.number().nullable(),
+	dew_point: z.number().nullable(),
+	wind: z.object({
+		speed_knot: z.number().min(0).nullable(),
+		speed_kilometre: z.number().min(0).nullable(),
+		direction: z.string().nullable(),
+		gust_speed_knot: z.number().min(0).nullable(),
+		gust_speed_kilometre: z.number().min(0).nullable(),
+	}),
+	relative_humidity: z.number().min(0).max(100).nullable(),
+	uv: z.number().min(0).nullable(),
+	icon_descriptor: z.string().nullable(),
+	time: z.string(),
+	is_night: z.boolean(),
+	next_forecast_period: z.string(),
+	next_three_hourly_forecast_period: z.string(),
+})
+
+export type HourlyForecastItem = z.infer<typeof HourlyForecastItem>
+
+export const HourlyForecastResponse = z.compile(
+	z.object({
+		data: z.array(HourlyForecastItem),
+		metadata: z.object({
+			response_timestamp: z.string(),
+			issue_time: z.string(),
+		}),
+	}),
+)
+
+export type HourlyForecastResponse = z.infer<typeof HourlyForecastResponse>
+
 export const Oberservation = z.object({
 	temp: z.number().nullable().optional(),
 	temp_feels_like: z.number().nullable().optional(),
