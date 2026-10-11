@@ -5,35 +5,28 @@ import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions, type ActionSchema } from './actions.js'
 import { UpdateFeedbacks, type FeedbackSchema } from './feedbacks.js'
 import { SearchResponse } from './interfaces.js'
-import {
+import type {
 	ForecastItem,
-	ForecastRequest,
 	HourlyForecastItem,
-	HourlyForecastResponse,
 	Location,
 	LocationInformation,
-	LocationInformationResponse,
 	Oberservation,
-	ObservationResponse,
 	Warning,
-	WarningResponse,
 } from './interfaces.js'
+import {
+	API_ENDPOINT,
+	API_HEADERS,
+	API_PATHS,
+	API_TIMEOUT,
+	QUERIES,
+	describeError,
+	type QueryResponse,
+	type QueryType,
+} from './api.js'
 import { StatusManager } from './status.js'
 import { AxiosInstance, AxiosResponse } from 'axios'
 import PQueue from 'p-queue'
 import axios from 'axios'
-
-const API_ENDPOINT = `https://api.weather.bom.gov.au/v1/`
-const API_TIMEOUT = 5000
-const API_HEADERS = { 'Content-Type': 'application/json' }
-const API_PATHS = {
-	LocationInformation: (geohash: string) => `locations/${geohash}`,
-	LocationSearch: () => `locations`,
-	ForecastDaily: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/forecasts/daily`,
-	ForecastHourly: (geohash: string) => `locations/${geohash.trim().substring(0, 6)}/forecasts/hourly`, //geohash must be 6 digit for Hourly Forecast
-	Observations: (geohash: string) => `locations/${geohash.trim().substring(0, 6)}/observations`, //geohash must be 6 digit for Observation Station
-	Warnings: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/warnings`,
-}
 
 export type ModuleTypes = {
 	config: ModuleConfig
@@ -109,8 +102,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getForecastHourly(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.ForecastHourly(geohash), undefined, signal)
-			const forecasts = HourlyForecastResponse.parse(response?.data)
+			const forecasts = await this.pollQuery('forecast_hourly', geohash, signal)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastHourly = forecasts.data
 			this.forecaseHourlyIssuedAt = forecasts.metadata.issue_time
@@ -121,8 +113,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getForecastDaily(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash), undefined, signal)
-			const forecasts = ForecastRequest.parse(response?.data)
+			const forecasts = await this.pollQuery('forecast_daily', geohash, signal)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastDaily = forecasts.data
 			this.forecastDailyIssuedAt = forecasts.metadata.issue_time
@@ -133,8 +124,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getWarnings(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.Warnings(geohash), undefined, signal)
-			const warnings = WarningResponse.parse(response?.data)
+			const warnings = await this.pollQuery('warnings', geohash, signal)
 			this.recentUpdate = warnings.metadata.response_timestamp
 			this.warnings = warnings.data
 		} catch (e: any) {
@@ -144,8 +134,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getLocationInfo(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.LocationInformation(geohash), undefined, signal)
-			const localInfo = LocationInformationResponse.parse(response?.data)
+			const localInfo = await this.pollQuery('location_information', geohash, signal)
 			this.locationInformation = localInfo.data
 		} catch (e: any) {
 			this.log('warn', `Location Infomation request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
@@ -154,8 +143,7 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 
 	public async getObservation(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.Observations(geohash), undefined, signal)
-			const observation = ObservationResponse.parse(response?.data)
+			const observation = await this.pollQuery('observations', geohash, signal)
 			this.recentUpdate = observation.metadata.response_timestamp
 			this.observation = observation.data
 		} catch (e: any) {
@@ -244,6 +232,33 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 			},
 			{ signal },
 		)
+	}
+
+	/** Fetch and parse one kind of data for polling, reporting the outcome on the connection status as queryApi does */
+	private async pollQuery<T extends QueryType>(
+		type: T,
+		geohash: string,
+		signal?: AbortSignal,
+	): Promise<QueryResponse<T>> {
+		const { path, schema } = QUERIES[type]
+		const response = await this.queryApi(path(geohash), undefined, signal)
+		return schema.parse(response?.data) as QueryResponse<T>
+	}
+
+	/**
+	 * Fetch and parse one kind of data for a geohash, for the Get Data action. Leaves the module's state and connection
+	 * status alone: a geohash typed into an action that the BOM rejects says nothing about whether it can be reached
+	 * @param signal Drops the request from the queue, or cancels it in flight, once aborted
+	 * @throws With the BOM's explanation if the request fails, or a ZodError if the response is not the expected shape
+	 */
+	public async query<T extends QueryType>(type: T, geohash: string, signal?: AbortSignal): Promise<QueryResponse<T>> {
+		const { label, path, schema } = QUERIES[type]
+		const response = await this.queue
+			.add(async () => this.axios.get(path(geohash), { signal }), { signal })
+			.catch((error: unknown) => {
+				throw new Error(`${label} request for ${geohash} failed: ${describeError(error)}`, { cause: error })
+			})
+		return schema.parse(response.data) as QueryResponse<T>
 	}
 
 	updateVariableValues(): void {

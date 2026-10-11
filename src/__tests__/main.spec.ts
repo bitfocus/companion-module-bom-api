@@ -7,7 +7,9 @@ import { StatusManager } from '../status.js'
 import {
 	dailyForecastResponse,
 	hourlyForecastResponse,
+	httpError,
 	locationInfoResponse,
+	notFoundResponse,
 	observationResponse,
 	warningsResponse,
 } from './fixtures.js'
@@ -38,7 +40,7 @@ function responseFor(path: string): unknown {
 
 describe('BomAPI', () => {
 	let instance: BomAPI
-	let get: ReturnType<typeof vi.fn<(path: string) => Promise<{ data: unknown }>>>
+	let get: ReturnType<typeof vi.fn<(path: string, config?: object) => Promise<{ data: unknown }>>>
 
 	beforeEach(() => {
 		vi.useFakeTimers()
@@ -137,5 +139,38 @@ describe('BomAPI', () => {
 		// Anything else still is
 		await instance.getForecastDaily('r1qg2z3')
 		expect(updateStatus).toHaveBeenCalledWith(InstanceStatus.ConnectionFailure, 'ECONNREFUSED')
+	})
+	describe('query, for the Get Data action', () => {
+		it('returns the whole parsed response, leaving the module state alone', async () => {
+			const { signal } = new AbortController()
+			const result = await instance.query('forecast_daily', 'r1qg2z3', signal)
+			expect(get).toHaveBeenCalledExactlyOnceWith('locations/r1qg2z3/forecasts/daily', { signal })
+			expect(result.metadata.issue_time).toBe('2026-10-11T07:30:58Z')
+			expect(result.data).toHaveLength(2)
+			expect(result.data[0].now?.temp_later).toBe(18)
+			// Parsed, not passed through: fields the schema does not declare are gone
+			expect(result.data[0].rain.amount).not.toHaveProperty('lower_range')
+			expect(instance.forecastDaily).toEqual([])
+		})
+
+		it('requests each kind of data with the geohash length its endpoint takes', async () => {
+			const result = await instance.query('forecast_hourly', 'r1qg2z3')
+			expect(paths()).toEqual(['locations/r1qg2z/forecasts/hourly'])
+			expect(result.data[0].wind.gust_speed_kilometre).toBe(33)
+		})
+
+		it("fails with the BOM's explanation, leaving the connection status alone", async () => {
+			const updateStatus = vi.spyOn(StatusManager.prototype, 'updateStatus')
+			get.mockRejectedValueOnce(httpError(404, notFoundResponse))
+			await expect(instance.query('location_information', 'r7zzzzz')).rejects.toThrow(
+				'Location Information request for r7zzzzz failed: No locations: Location cannot be found.',
+			)
+			expect(updateStatus).not.toHaveBeenCalled()
+		})
+
+		it('fails on a response that does not match the schema', async () => {
+			get.mockResolvedValueOnce({ data: warningsResponse })
+			await expect(instance.query('observations', 'r1qg2z3')).rejects.toThrow('expected object')
+		})
 	})
 })

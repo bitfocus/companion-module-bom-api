@@ -1,3 +1,5 @@
+import { AxiosError, type AxiosResponse } from 'axios'
+
 /**
  * BOM API responses for Woodend (geohash r1qg2z3, observations from r1qg2z), as raw JSON before parsing.
  *
@@ -201,4 +203,18 @@ export const hourlyForecastResponse = {
 			next_forecast_period: '2026-10-11T09:00:00Z',
 		},
 	],
+}
+
+/** The body of the 404 for location information on r7zzzzz, a geohash out at sea */
+export const notFoundResponse = {
+	errors: [{ code: 'WEATHER-404', title: 'No locations', status: '404', detail: 'Location cannot be found.' }],
+	metadata: { copyright: COPYRIGHT },
+}
+
+/** The error axios rejects with when the BOM answers with an error status */
+export function httpError(status: number, data: unknown): AxiosError {
+	return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', undefined, undefined, {
+		status,
+		data,
+	} as AxiosResponse)
 }

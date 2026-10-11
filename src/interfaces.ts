@@ -229,3 +229,19 @@ export const WarningResponse = z.compile(
 )
 
 export type WarningResponse = z.infer<typeof WarningResponse>
+
+/** The body of a failed request, eg 404 "No locations": "Location cannot be found." */
+export const ApiErrorResponse = z.object({
+	errors: z
+		.array(
+			z.object({
+				code: z.string(),
+				title: z.string(),
+				status: z.string(),
+				detail: z.string(),
+			}),
+		)
+		.min(1),
+})
+
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>

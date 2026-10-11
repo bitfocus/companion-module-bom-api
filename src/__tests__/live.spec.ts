@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CompanionActionCallbackContext, CompanionActionEvent } from '@companion-module/base'
 import BomAPI from '../main.js'
+import { ActionId } from '../actions.js'
+import { QueryType } from '../api.js'
 import { searchBy, type ModuleConfig } from '../config.js'
 
 vi.mock('@companion-module/base', async (importOriginal) =>
@@ -64,4 +67,35 @@ describe.runIf(process.env.BOM_LIVE)('BOM API (live)', () => {
 		},
 		60000,
 	)
+	describe('Get Data', () => {
+		async function getData(options: { geohash: string; data: QueryType }) {
+			instance = new BomAPI({})
+			instance.config = CONFIGS['Woodend, by latitude and longitude']
+			const setActionDefinitions = vi.spyOn(instance, 'setActionDefinitions')
+			instance.updateActions()
+			const definition = setActionDefinitions.mock.calls[0][0][ActionId.GetData]
+			if (!definition) throw new Error('get_data not defined')
+			return await definition.callback(
+				{ options } as CompanionActionEvent<typeof options>,
+				{ signal: new AbortController().signal } as CompanionActionCallbackContext,
+			)
+		}
+
+		it.each(QueryType)(
+			'%s for the current location parses into the whole response',
+			async (data) => {
+				const result = await getData({ geohash: '', data })
+				expect(result).toHaveProperty('metadata.response_timestamp')
+				expect(result).toHaveProperty('data')
+			},
+			30000,
+		)
+
+		it("fails with the BOM's explanation for a geohash it has no location for", async () => {
+			// Out at sea
+			await expect(getData({ geohash: 'r7zzzzz', data: 'location_information' })).rejects.toThrow(
+				'Location cannot be found.',
+			)
+		}, 30000)
+	})
 })
