@@ -30,22 +30,26 @@ export const LocationInformation = z.object({
 
 export type LocationInformation = z.infer<typeof LocationInformation>
 
-export const LocationInformationResponse = z.object({
-	metadata: z.object({
-		response_timestamp: z.string(),
+export const LocationInformationResponse = z.compile(
+	z.object({
+		metadata: z.object({
+			response_timestamp: z.string(),
+		}),
+		data: LocationInformation,
 	}),
-	data: LocationInformation,
-})
+)
 
 export type LocationInformationResponse = z.infer<typeof LocationInformationResponse>
 
-export const SearchResponse = z.object({
-	metadata: z.object({
-		response_timestamp: z.string(),
-		copyright: z.string().nullable().optional(),
+export const SearchResponse = z.compile(
+	z.object({
+		metadata: z.object({
+			response_timestamp: z.string(),
+			copyright: z.string().nullable().optional(),
+		}),
+		data: z.array(Location),
 	}),
-	data: z.array(Location),
-})
+)
 
 export type SearchResponse = z.infer<typeof SearchResponse>
 
@@ -98,17 +102,19 @@ export const ForecastItem = z.object({
 
 export type ForecastItem = z.infer<typeof ForecastItem>
 
-export const ForecastRequest = z.object({
-	data: z.array(ForecastItem),
-	metadata: z.object({
-		response_timestamp: z.string(),
-		issue_time: z.string(),
-		next_issue_time: z.string(),
-		forecast_region: z.string(),
-		forecast_type: z.string(),
-		copyright: z.string(),
+export const ForecastRequest = z.compile(
+	z.object({
+		data: z.array(ForecastItem),
+		metadata: z.object({
+			response_timestamp: z.string(),
+			issue_time: z.string(),
+			next_issue_time: z.string(),
+			forecast_region: z.string(),
+			forecast_type: z.string(),
+			copyright: z.string(),
+		}),
 	}),
-})
+)
 
 export type ForecastRequest = z.infer<typeof ForecastRequest>
 
@@ -141,13 +147,15 @@ export const Oberservation = z.object({
 
 export type Oberservation = z.infer<typeof Oberservation>
 
-export const ObservationResponse = z.object({
-	metadata: z.object({
-		response_timestamp: z.string(),
-		issue_time: z.string(),
+export const ObservationResponse = z.compile(
+	z.object({
+		metadata: z.object({
+			response_timestamp: z.string(),
+			issue_time: z.string(),
+		}),
+		data: Oberservation,
 	}),
-	data: Oberservation,
-})
+)
 
 export type ObservationResponse = z.infer<typeof ObservationResponse>
 
@@ -165,11 +173,13 @@ export const Warning = z.object({
 
 export type Warning = z.infer<typeof Warning>
 
-export const WarningResponse = z.object({
-	metadata: z.object({
-		response_timestamp: z.string(),
+export const WarningResponse = z.compile(
+	z.object({
+		metadata: z.object({
+			response_timestamp: z.string(),
+		}),
+		data: z.array(Warning),
 	}),
-	data: z.array(Warning),
-})
+)
 
 export type WarningResponse = z.infer<typeof WarningResponse>

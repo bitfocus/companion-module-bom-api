@@ -1,11 +1,17 @@
-import { type SomeCompanionConfigField } from '@companion-module/base'
+import { type DropdownChoice, type SomeCompanionConfigField } from '@companion-module/base'
 
 export enum searchBy {
 	LatLong = 'latLong',
 	Name = 'name',
 }
 
-export interface ModuleConfig {
+export const SEARCH_BY_CHOICES = [
+	{ id: searchBy.LatLong, label: 'Latitude & Longitude' },
+	{ id: searchBy.Name, label: 'Name' },
+] as const satisfies DropdownChoice<searchBy>[]
+
+// A type alias, not an interface: InstanceTypes requires config to satisfy JsonObject, and interfaces don't
+export type ModuleConfig = {
 	latitude: number
 	longitude: number
 	location: string
@@ -21,11 +27,8 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			id: 'searchBy',
 			label: 'Search Geohash by',
 			width: 6,
-			default: searchBy.LatLong,
-			choices: [
-				{ id: searchBy.LatLong, label: 'Latitude & Longitude' },
-				{ id: searchBy.Name, label: 'Name' },
-			],
+			default: SEARCH_BY_CHOICES[0].id,
+			choices: SEARCH_BY_CHOICES,
 		},
 		{
 			type: 'number',
@@ -36,9 +39,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			max: -10,
 			default: -37.3568,
 			step: 0.0001,
-			isVisible: (options) => {
-				return options.searchBy == 'latLong'
-			},
+			isVisibleExpression: `$(options:searchBy) == '${searchBy.LatLong}'`,
 		},
 		{
 			type: 'number',
@@ -49,9 +50,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			max: 160,
 			default: 144.5274,
 			step: 0.0001,
-			isVisible: (options) => {
-				return options.searchBy == 'latLong'
-			},
+			isVisibleExpression: `$(options:searchBy) == '${searchBy.LatLong}'`,
 		},
 		{
 			type: 'textinput',
@@ -60,9 +59,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			width: 8,
 			regex: '/^([0-9a-zA-Z]{1})([0-9a-zA-Z -]{1,})([0-9a-zA-Z]{1})$/',
 			default: 'Adelaide',
-			isVisible: (options) => {
-				return options.searchBy == 'name'
-			},
+			isVisibleExpression: `$(options:searchBy) == '${searchBy.Name}'`,
 		},
 		{
 			type: 'number',

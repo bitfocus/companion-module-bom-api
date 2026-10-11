@@ -1,15 +1,25 @@
-import type { BomAPI } from './main.js'
-import { DropdownChoice } from '@companion-module/base'
+import type BomAPI from './main.js'
+import type { CompanionActionDefinitions, DropdownChoice } from '@companion-module/base'
 import { orderBy } from 'lodash'
 
+export const NO_LOCATIONS = 'No Locations available'
+
+export enum ActionId {
+	SelectLocation = 'selectLocation',
+}
+
+export type ActionSchema = {
+	[ActionId.SelectLocation]: { options: { location: string } }
+}
+
 export function UpdateActions(self: BomAPI): void {
-	let locations: DropdownChoice[] = []
+	let locations: DropdownChoice<string>[] = []
 	self.locations.forEach((location) => {
 		locations.push({ id: location.geohash, label: `${location.name} (${location.state}:${location.postcode})` })
 	})
 	locations = orderBy(locations, ['label'], ['asc'])
-	self.setActionDefinitions({
-		selectLocation: {
+	const actions: CompanionActionDefinitions<ActionSchema> = {
+		[ActionId.SelectLocation]: {
 			name: 'Select Location',
 			options: [
 				{
@@ -17,20 +27,19 @@ export function UpdateActions(self: BomAPI): void {
 					type: 'dropdown',
 					label: 'Location',
 					choices: locations,
-					default: locations[0].id ?? 'No Locations available',
-					allowCustom: false,
+					// The first location by label, or a placeholder when the search found none
+					default: locations[0]?.id ?? NO_LOCATIONS,
 				},
 			],
 			callback: async (action, context) => {
-				if (action.options.location == 'No Locations available') return
-				const location = self.locations.get(
-					await context.parseVariablesInString(action.options.location?.toString() ?? ''),
-				)
+				if (action.options.location == NO_LOCATIONS) return
+				const location = self.locations.get(action.options.location)
 				if (location) {
 					self.location = location
-					await self.updateData(location.geohash)
+					await self.updateData(location.geohash, context.signal)
 				}
 			},
 		},
-	})
+	}
+	self.setActionDefinitions(actions)
 }

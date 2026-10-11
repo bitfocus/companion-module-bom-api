@@ -1,15 +1,9 @@
-import {
-	InstanceBase,
-	runEntrypoint,
-	InstanceStatus,
-	SomeCompanionConfigField,
-	CompanionVariableValues,
-} from '@companion-module/base'
+import { InstanceBase, InstanceStatus, type SomeCompanionConfigField } from '@companion-module/base'
 import { GetConfigFields, searchBy, type ModuleConfig } from './config.js'
-import { UpdateVariableDefinitions } from './variables.js'
+import { UpdateVariableDefinitions, UpdateVariableValues, type VariablesSchema } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
-import { UpdateActions } from './actions.js'
-import { UpdateFeedbacks } from './feedbacks.js'
+import { UpdateActions, type ActionSchema } from './actions.js'
+import { UpdateFeedbacks, type FeedbackSchema } from './feedbacks.js'
 import { SearchResponse } from './interfaces.js'
 import {
 	ForecastItem,
@@ -39,7 +33,17 @@ const API_PATHS = {
 	Warnings: (geohash: string) => `locations/${geohash.trim().substring(0, 7)}/warnings`,
 }
 
-export class BomAPI extends InstanceBase<ModuleConfig> {
+export type ModuleTypes = {
+	config: ModuleConfig
+	secrets: undefined
+	actions: ActionSchema
+	feedbacks: FeedbackSchema
+	variables: VariablesSchema
+}
+
+export { UpgradeScripts }
+
+export default class BomAPI extends InstanceBase<ModuleTypes> {
 	config!: ModuleConfig // Setup in init()
 	queue = new PQueue({ concurrency: 1 })
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
@@ -65,7 +69,7 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		longitude: 144.5274,
 	}
 	locations: Map<string, Location> = new Map()
-	observation!: Oberservation
+	observation: Oberservation | undefined = undefined // Until the first observation request succeeds
 	forecastDaily: ForecastItem[] = []
 	forecastDailyIssuedAt: string = ''
 	forecastHourly: ForecastItem[] = []
@@ -101,9 +105,9 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		this.updateVariableDefinitions() // export variable definitions
 	}
 
-	public async getForecastHourly(geohash: string = this.location.geohash): Promise<void> {
+	public async getForecastHourly(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash))
+			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash), undefined, signal)
 			const forecasts = ForecastRequest.parse(response?.data)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastHourly = forecasts.data
@@ -113,9 +117,9 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		}
 	}
 
-	public async getForecastDaily(geohash: string = this.location.geohash): Promise<void> {
+	public async getForecastDaily(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash))
+			const response = await this.queryApi(API_PATHS.ForecastDaily(geohash), undefined, signal)
 			const forecasts = ForecastRequest.parse(response?.data)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastDaily = forecasts.data
@@ -125,9 +129,9 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		}
 	}
 
-	public async getWarnings(geohash: string = this.location.geohash): Promise<void> {
+	public async getWarnings(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.Warnings(geohash))
+			const response = await this.queryApi(API_PATHS.Warnings(geohash), undefined, signal)
 			const warnings = WarningResponse.parse(response?.data)
 			this.recentUpdate = warnings.metadata.response_timestamp
 			this.warnings = warnings.data
@@ -136,9 +140,9 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		}
 	}
 
-	public async getLocationInfo(geohash: string = this.location.geohash): Promise<void> {
+	public async getLocationInfo(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.LocationInformation(geohash))
+			const response = await this.queryApi(API_PATHS.LocationInformation(geohash), undefined, signal)
 			const localInfo = LocationInformationResponse.parse(response?.data)
 			this.locationInformation = localInfo.data
 		} catch (e: any) {
@@ -146,9 +150,9 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		}
 	}
 
-	public async getObservation(geohash: string = this.location.geohash): Promise<void> {
+	public async getObservation(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
 		try {
-			const response = await this.queryApi(API_PATHS.Observations(geohash))
+			const response = await this.queryApi(API_PATHS.Observations(geohash), undefined, signal)
 			const observation = ObservationResponse.parse(response?.data)
 			this.recentUpdate = observation.metadata.response_timestamp
 			this.observation = observation.data
@@ -179,12 +183,23 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		}
 	}
 
-	public async updateData(geohash: string = this.location.geohash): Promise<void> {
-		await this.getForecastDaily(geohash)
-		await this.getForecastHourly(geohash)
-		await this.getObservation(geohash)
-		await this.getWarnings(geohash)
-		await this.getLocationInfo(geohash)
+	/**
+	 * Fetch everything for a location, publish it, and schedule the next poll
+	 * @param signal From the action that asked for this. Once it aborts no further requests are issued, but what has
+	 * already come back is still published and polling carries on
+	 */
+	public async updateData(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+		const requests = [
+			async () => this.getForecastDaily(geohash, signal),
+			async () => this.getForecastHourly(geohash, signal),
+			async () => this.getObservation(geohash, signal),
+			async () => this.getWarnings(geohash, signal),
+			async () => this.getLocationInfo(geohash, signal),
+		]
+		for (const request of requests) {
+			if (signal?.aborted) break
+			await request()
+		}
 		this.updateVariableDefinitions() // export variable definitions
 		this.updateVariableValues()
 		if (this.pollTimer) clearInterval(this.pollTimer)
@@ -197,93 +212,40 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 	 * Make a query of the BOM API
 	 * @param path API path to query
 	 * @param searchParams To include in query, only required for location search
+	 * @param signal Drops the request from the queue, or cancels it in flight, once aborted
 	 * @returns Axios response or Void if error
 	 */
-	private async queryApi(path: string, searchParams?: string): Promise<AxiosResponse<any, any> | void> {
-		return await this.queue.add(async () => {
-			return await this.axios
-				.get(path, searchParams ? { params: { search: searchParams } } : {})
-				.then((response) => {
-					this.statusManager.updateStatus(InstanceStatus.Ok)
-					if (this.config.verbose) {
-						this.log('debug', `Response from API call to ${path}:\n${JSON.stringify(response.data)}`)
-					}
-					return response
-				})
-				.catch((error) => {
-					this.log('error', error.cause)
-					this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, error.code)
-					if (this.config.verbose) this.log('error', JSON.stringify(error))
-					return
-				})
-		})
+	private async queryApi(
+		path: string,
+		searchParams?: string,
+		signal?: AbortSignal,
+	): Promise<AxiosResponse<any, any> | void> {
+		return await this.queue.add(
+			async () => {
+				return await this.axios
+					.get(path, searchParams ? { params: { search: searchParams }, signal } : { signal })
+					.then((response) => {
+						this.statusManager.updateStatus(InstanceStatus.Ok)
+						if (this.config.verbose) {
+							this.log('debug', `Response from API call to ${path}:\n${JSON.stringify(response.data)}`)
+						}
+						return response
+					})
+					.catch((error) => {
+						// Cancelled by the caller, so says nothing about whether the API is reachable
+						if (axios.isCancel(error)) return
+						this.log('error', error.cause)
+						this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, error.code)
+						if (this.config.verbose) this.log('error', JSON.stringify(error))
+						return
+					})
+			},
+			{ signal },
+		)
 	}
 
 	updateVariableValues(): void {
-		const values: CompanionVariableValues = {}
-		values['mostRecentData'] = this.recentUpdate
-		values['fc_day_issued_at'] = this.forecastDailyIssuedAt
-		values['fc_hour_issued_at'] = this.forecaseHourlyIssuedAt
-		for (const [key, value] of Object.entries(this.locationInformation)) {
-			values[`locInfo_${key}`] = value ?? undefined
-		}
-		for (const [key, value] of Object.entries(this.observation)) {
-			if (typeof value == 'object' && value !== null) {
-				for (const [key2, value2] of Object.entries(value)) {
-					values[`obs_${key}_${key2}`] = value2 ?? undefined
-				}
-			} else {
-				values[`obs_${key}`] = value ?? undefined
-			}
-		}
-		for (const [i, warning] of this.warnings.entries()) {
-			for (const [key, value] of Object.entries(warning)) {
-				values[`warn_${i}_${key}`] = value
-			}
-		}
-		for (const [i, forecast] of this.forecastDaily.entries()) {
-			for (const [key, value] of Object.entries(forecast)) {
-				if (typeof value == 'object' && value !== null) {
-					for (const [key2, value2] of Object.entries(value)) {
-						if (typeof value2 == 'object' && value2 !== null) {
-							for (const [key3, value3] of Object.entries(value2)) {
-								if (typeof value3 == 'number' || typeof value3 == 'string') {
-									values[`fc_day_${i}_${key}_${key2}_${key3}`] = value3
-								} else {
-									values[`fc_day_${i}_${key}_${key2}_${key3}`] = undefined
-								}
-							}
-						} else {
-							values[`fc_day_${i}_${key}_${key2}`] = value2 ?? undefined
-						}
-					}
-				} else {
-					values[`fc_day_${i}_${key}`] = value ?? undefined
-				}
-			}
-		}
-		for (const [i, forecast] of this.forecastHourly.entries()) {
-			for (const [key, value] of Object.entries(forecast)) {
-				if (typeof value == 'object' && value !== null) {
-					for (const [key2, value2] of Object.entries(value)) {
-						if (typeof value2 == 'object' && value2 !== null) {
-							for (const [key3, value3] of Object.entries(value2)) {
-								if (typeof value3 == 'number' || typeof value3 == 'string') {
-									values[`fc_hour_${i}_${key}_${key2}_${key3}`] = value3
-								} else {
-									values[`fc_hour_${i}_${key}_${key2}_${key3}`] = undefined
-								}
-							}
-						} else {
-							values[`fc_hour_${i}_${key}_${key2}`] = value2 ?? undefined
-						}
-					}
-				} else {
-					values[`fc_hour_${i}_${key}`] = value ?? undefined
-				}
-			}
-		}
-		this.setVariableValues(values)
+		UpdateVariableValues(this)
 	}
 
 	// Return config fields for web config
@@ -303,5 +265,3 @@ export class BomAPI extends InstanceBase<ModuleConfig> {
 		UpdateVariableDefinitions(this)
 	}
 }
-
-runEntrypoint(BomAPI, UpgradeScripts)
