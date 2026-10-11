@@ -1,6 +1,7 @@
 import type BomAPI from './main.js'
 import type { CompanionActionDefinitions, DropdownChoice } from '@companion-module/base'
-import { orderBy } from 'lodash'
+// A default import: lodash is CommonJS, and Node's ESM loader cannot see its named exports
+import _ from 'lodash'
 
 export const NO_LOCATIONS = 'No Locations available'
 
@@ -17,7 +18,7 @@ export function UpdateActions(self: BomAPI): void {
 	self.locations.forEach((location) => {
 		locations.push({ id: location.geohash, label: `${location.name} (${location.state}:${location.postcode})` })
 	})
-	locations = orderBy(locations, ['label'], ['asc'])
+	locations = _.orderBy(locations, ['label'], ['asc'])
 	const actions: CompanionActionDefinitions<ActionSchema> = {
 		[ActionId.SelectLocation]: {
 			name: 'Select Location',

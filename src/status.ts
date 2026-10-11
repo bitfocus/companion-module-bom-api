@@ -1,6 +1,7 @@
 import { InstanceBase, InstanceStatus } from '@companion-module/base'
 import type { ModuleTypes } from './main.js'
-import { throttle } from 'lodash'
+// A default import: lodash is CommonJS, and Node's ESM loader cannot see its named exports
+import _ from 'lodash'
 
 export interface Status {
 	status: InstanceStatus
@@ -74,7 +75,7 @@ export class StatusManager {
 	 *
 	 */
 
-	private setNewStatus = throttle(
+	private setNewStatus = _.throttle(
 		(newStatus: Status = this.#newStatus) => {
 			if (typeof newStatus.message === 'object') {
 				this.#parentInstance.updateStatus(newStatus.status, JSON.stringify(newStatus.message))
