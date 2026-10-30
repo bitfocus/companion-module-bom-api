@@ -106,8 +106,8 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastHourly = forecasts.data
 			this.forecaseHourlyIssuedAt = forecasts.metadata.issue_time
-		} catch (e: any) {
-			this.log('warn', `Hourly Forecast request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		} catch (e) {
+			this.logRequestFailure('Hourly Forecast', e, signal)
 		}
 	}
 
@@ -117,8 +117,8 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastDaily = forecasts.data
 			this.forecastDailyIssuedAt = forecasts.metadata.issue_time
-		} catch (e: any) {
-			this.log('warn', `Daily Forecast request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		} catch (e) {
+			this.logRequestFailure('Daily Forecast', e, signal)
 		}
 	}
 
@@ -127,8 +127,8 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 			const warnings = await this.pollQuery('warnings', geohash, signal)
 			this.recentUpdate = warnings.metadata.response_timestamp
 			this.warnings = warnings.data
-		} catch (e: any) {
-			this.log('warn', `Warnings request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		} catch (e) {
+			this.logRequestFailure('Warnings', e, signal)
 		}
 	}
 
@@ -136,8 +136,8 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 		try {
 			const localInfo = await this.pollQuery('location_information', geohash, signal)
 			this.locationInformation = localInfo.data
-		} catch (e: any) {
-			this.log('warn', `Location Infomation request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		} catch (e) {
+			this.logRequestFailure('Location Infomation', e, signal)
 		}
 	}
 
@@ -146,9 +146,18 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 			const observation = await this.pollQuery('observations', geohash, signal)
 			this.recentUpdate = observation.metadata.response_timestamp
 			this.observation = observation.data
-		} catch (e: any) {
-			this.log('warn', `Observation request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		} catch (e) {
+			this.logRequestFailure('Observation', e, signal)
 		}
+	}
+
+	/**
+	 * Log a failed poll request, unless it was cancelled by the action that asked for it. p-queue 10 rejects a task
+	 * whose signal aborts even while it is running, so a cancelled request arrives here like a failed one
+	 */
+	private logRequestFailure(what: string, e: any, signal?: AbortSignal): void {
+		if (signal?.aborted) return
+		this.log('warn', `${what} request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
 	}
 
 	private locationSearchParams(config: ModuleConfig): string {
