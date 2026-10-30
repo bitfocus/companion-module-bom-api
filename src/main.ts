@@ -100,63 +100,58 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 		this.updateVariableDefinitions() // export variable definitions
 	}
 
-	public async getForecastHourly(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+	public async getForecastHourly(geohash: string = this.location.geohash): Promise<void> {
 		try {
-			const forecasts = await this.pollQuery('forecast_hourly', geohash, signal)
+			const forecasts = await this.pollQuery('forecast_hourly', geohash)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastHourly = forecasts.data
 			this.forecaseHourlyIssuedAt = forecasts.metadata.issue_time
 		} catch (e) {
-			this.logRequestFailure('Hourly Forecast', e, signal)
+			this.logRequestFailure('Hourly Forecast', e)
 		}
 	}
 
-	public async getForecastDaily(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+	public async getForecastDaily(geohash: string = this.location.geohash): Promise<void> {
 		try {
-			const forecasts = await this.pollQuery('forecast_daily', geohash, signal)
+			const forecasts = await this.pollQuery('forecast_daily', geohash)
 			this.recentUpdate = forecasts.metadata.response_timestamp
 			this.forecastDaily = forecasts.data
 			this.forecastDailyIssuedAt = forecasts.metadata.issue_time
 		} catch (e) {
-			this.logRequestFailure('Daily Forecast', e, signal)
+			this.logRequestFailure('Daily Forecast', e)
 		}
 	}
 
-	public async getWarnings(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+	public async getWarnings(geohash: string = this.location.geohash): Promise<void> {
 		try {
-			const warnings = await this.pollQuery('warnings', geohash, signal)
+			const warnings = await this.pollQuery('warnings', geohash)
 			this.recentUpdate = warnings.metadata.response_timestamp
 			this.warnings = warnings.data
 		} catch (e) {
-			this.logRequestFailure('Warnings', e, signal)
+			this.logRequestFailure('Warnings', e)
 		}
 	}
 
-	public async getLocationInfo(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+	public async getLocationInfo(geohash: string = this.location.geohash): Promise<void> {
 		try {
-			const localInfo = await this.pollQuery('location_information', geohash, signal)
+			const localInfo = await this.pollQuery('location_information', geohash)
 			this.locationInformation = localInfo.data
 		} catch (e) {
-			this.logRequestFailure('Location Infomation', e, signal)
+			this.logRequestFailure('Location Infomation', e)
 		}
 	}
 
-	public async getObservation(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
+	public async getObservation(geohash: string = this.location.geohash): Promise<void> {
 		try {
-			const observation = await this.pollQuery('observations', geohash, signal)
+			const observation = await this.pollQuery('observations', geohash)
 			this.recentUpdate = observation.metadata.response_timestamp
 			this.observation = observation.data
 		} catch (e) {
-			this.logRequestFailure('Observation', e, signal)
+			this.logRequestFailure('Observation', e)
 		}
 	}
 
-	/**
-	 * Log a failed poll request, unless it was cancelled by the action that asked for it. p-queue 10 rejects a task
-	 * whose signal aborts even while it is running, so a cancelled request arrives here like a failed one
-	 */
-	private logRequestFailure(what: string, e: unknown, signal?: AbortSignal): void {
-		if (signal?.aborted) return
+	private logRequestFailure(what: string, e: unknown): void {
 		this.log('warn', `${what} request failed: ${describeError(e)}`)
 	}
 
@@ -183,22 +178,15 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 	}
 
 	/**
-	 * Fetch everything for a location, publish it, and schedule the next poll
-	 * @param signal From the action that asked for this. Once it aborts no further requests are issued, but what has
-	 * already come back is still published and polling carries on
+	 * Fetch everything for a location, publish it, and schedule the next poll. Takes no abort signal: stopping part way
+	 * would publish some data for this location beside the rest for the previous one
 	 */
-	public async updateData(geohash: string = this.location.geohash, signal?: AbortSignal): Promise<void> {
-		const requests = [
-			async () => this.getForecastDaily(geohash, signal),
-			async () => this.getForecastHourly(geohash, signal),
-			async () => this.getObservation(geohash, signal),
-			async () => this.getWarnings(geohash, signal),
-			async () => this.getLocationInfo(geohash, signal),
-		]
-		for (const request of requests) {
-			if (signal?.aborted) break
-			await request()
-		}
+	public async updateData(geohash: string = this.location.geohash): Promise<void> {
+		await this.getForecastDaily(geohash)
+		await this.getForecastHourly(geohash)
+		await this.getObservation(geohash)
+		await this.getWarnings(geohash)
+		await this.getLocationInfo(geohash)
 		this.updateVariableDefinitions() // export variable definitions
 		this.updateVariableValues()
 		if (this.pollTimer) clearInterval(this.pollTimer)
@@ -211,46 +199,32 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 	 * Make a query of the BOM API
 	 * @param path API path to query
 	 * @param searchParams To include in query, only required for location search
-	 * @param signal Drops the request from the queue, or cancels it in flight, once aborted
 	 * @returns Axios response or Void if error
 	 */
-	private async queryApi(
-		path: string,
-		searchParams?: string,
-		signal?: AbortSignal,
-	): Promise<AxiosResponse<any, any> | void> {
-		return await this.queue.add(
-			async () => {
-				return await this.axios
-					.get(path, searchParams ? { params: { search: searchParams }, signal } : { signal })
-					.then((response) => {
-						this.statusManager.updateStatus(InstanceStatus.Ok)
-						if (this.config.verbose) {
-							this.log('debug', `Response from API call to ${path}:\n${JSON.stringify(response.data)}`)
-						}
-						return response
-					})
-					.catch((error) => {
-						// Cancelled by the caller, so says nothing about whether the API is reachable
-						if (axios.isCancel(error)) return
-						this.log('error', error.cause)
-						this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, error.code)
-						if (this.config.verbose) this.log('error', JSON.stringify(error))
-						return
-					})
-			},
-			{ signal },
-		)
+	private async queryApi(path: string, searchParams?: string): Promise<AxiosResponse<any, any> | void> {
+		return await this.queue.add(async () => {
+			return await this.axios
+				.get(path, searchParams ? { params: { search: searchParams } } : {})
+				.then((response) => {
+					this.statusManager.updateStatus(InstanceStatus.Ok)
+					if (this.config.verbose) {
+						this.log('debug', `Response from API call to ${path}:\n${JSON.stringify(response.data)}`)
+					}
+					return response
+				})
+				.catch((error) => {
+					this.log('error', error.cause)
+					this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, error.code)
+					if (this.config.verbose) this.log('error', JSON.stringify(error))
+					return
+				})
+		})
 	}
 
 	/** Fetch and parse one kind of data for polling, reporting the outcome on the connection status as queryApi does */
-	private async pollQuery<T extends QueryType>(
-		type: T,
-		geohash: string,
-		signal?: AbortSignal,
-	): Promise<QueryResponse<T>> {
+	private async pollQuery<T extends QueryType>(type: T, geohash: string): Promise<QueryResponse<T>> {
 		const { path, schema } = QUERIES[type]
-		const response = await this.queryApi(path(geohash), undefined, signal)
+		const response = await this.queryApi(path(geohash))
 		return schema.parse(response?.data) as QueryResponse<T>
 	}
 

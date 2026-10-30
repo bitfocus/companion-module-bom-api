@@ -35,13 +35,14 @@ export function UpdateActions(self: BomAPI): void {
 					default: locations[0]?.id ?? NO_LOCATIONS,
 				},
 			],
-			callback: async (action, context) => {
+			// Ignores the abort signal: aborting doesn't undo the change of location, so its data is needed either way
+			callback: async (action) => {
 				if (action.options.location == NO_LOCATIONS) return
 				const location = self.locations.get(action.options.location)
 				if (location) {
 					self.location = location
 					self.updateActions() // so Get Data defaults to the new location
-					await self.updateData(location.geohash, context.signal)
+					await self.updateData(location.geohash)
 				}
 			},
 		},

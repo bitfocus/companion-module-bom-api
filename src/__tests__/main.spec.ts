@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CanceledError, type AxiosInstance } from 'axios'
-import { InstanceStatus } from '@companion-module/base'
+import type { AxiosInstance } from 'axios'
+import { InstanceStatus, type CompanionActionCallbackContext, type CompanionActionEvent } from '@companion-module/base'
 import BomAPI from '../main.js'
+import { ActionId } from '../actions.js'
+import { SearchResponse } from '../interfaces.js'
 import { searchBy, type ModuleConfig } from '../config.js'
 import { StatusManager } from '../status.js'
 import {
 	dailyForecastResponse,
 	hourlyForecastResponse,
 	httpError,
+	searchResponse,
 	locationInfoResponse,
 	notFoundResponse,
 	observationResponse,
@@ -84,49 +87,26 @@ describe('BomAPI', () => {
 		expect(get).toHaveBeenCalledTimes(2 * REQUESTS_PER_UPDATE)
 	})
 
-	it('stops issuing requests once the signal aborts, but still publishes and keeps polling', async () => {
+	it('finishes fetching a location chosen with Select Location, even when the action is aborted', async () => {
+		// Aborting doesn't undo the change of location. Stopping part way left variables from both locations
+		for (const location of SearchResponse.parse(searchResponse).data) instance.locations.set(location.geohash, location)
+		const setActionDefinitions = vi.spyOn(instance, 'setActionDefinitions')
+		instance.updateActions()
+		const selectLocation = setActionDefinitions.mock.calls[0][0][ActionId.SelectLocation]
+		if (!selectLocation) throw new Error('selectLocation not defined')
 		const controller = new AbortController()
-		const setVariableValues = vi.spyOn(instance, 'setVariableValues')
-		const log = vi.spyOn(instance, 'log')
 		get.mockImplementationOnce(async (path) => {
 			controller.abort()
 			return { data: responseFor(path) }
 		})
-		await instance.updateData('r1r0fsn', controller.signal)
-		expect(get).toHaveBeenCalledTimes(1)
-		expect(setVariableValues).toHaveBeenCalledOnce()
-		// The queue would drop the rest anyway, but each would then be logged as a failed request
-		expect(log).not.toHaveBeenCalledWith('warn', expect.anything())
-
-		// The poll it schedules is not tied to the aborted action, and fetches the location that action chose
-		await vi.advanceTimersByTimeAsync(POLL_MS)
-		expect(get).toHaveBeenCalledTimes(1 + REQUESTS_PER_UPDATE)
-		expect(
-			paths()
-				.slice(1)
-				.every((path) => path.includes('r1r0fs')),
-		).toBe(true)
-	})
-
-	it('drops a request still waiting in the queue once its signal aborts', async () => {
-		// Hold the queue with a poll whose first request has not returned
-		let release!: () => void
-		get.mockImplementationOnce(async (path) => {
-			await new Promise<void>((resolve) => (release = resolve))
-			return { data: responseFor(path) }
-		})
-		const poll = instance.updateData('r1qg2z3')
-		await vi.advanceTimersByTimeAsync(0)
-
-		const controller = new AbortController()
-		const action = instance.updateData('r1r0fsn', controller.signal)
-		await vi.advanceTimersByTimeAsync(0)
-		controller.abort()
-		await action
-		release()
-		await poll
-
-		expect(paths().some((path) => path.includes('r1r0fs'))).toBe(false)
+		await selectLocation.callback(
+			{ options: { location: 'r1r0fsn' } } as CompanionActionEvent<{ location: string }>,
+			{ signal: controller.signal } as CompanionActionCallbackContext,
+		)
+		expect(paths()).toHaveLength(REQUESTS_PER_UPDATE)
+		expect(paths().every((path) => path.includes('r1r0fs'))).toBe(true)
+		// Including the response to the request that was in flight when the action aborted
+		expect(instance.forecastDaily).toHaveLength(2)
 	})
 
 	it('logs why a request failed, rather than an error object stringified as {}', async () => {
@@ -147,17 +127,13 @@ describe('BomAPI', () => {
 		)
 	})
 
-	it('does not report a cancelled request as a connection failure', async () => {
+	it('reports a failed request as a connection failure', async () => {
 		const updateStatus = vi.spyOn(StatusManager.prototype, 'updateStatus')
-		get.mockRejectedValueOnce(new CanceledError())
 		get.mockRejectedValueOnce(Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }))
-		await instance.getForecastDaily('r1qg2z3')
-		expect(updateStatus).not.toHaveBeenCalledWith(InstanceStatus.ConnectionFailure, expect.anything())
-
-		// Anything else still is
 		await instance.getForecastDaily('r1qg2z3')
 		expect(updateStatus).toHaveBeenCalledWith(InstanceStatus.ConnectionFailure, 'ECONNREFUSED')
 	})
+
 	describe('query, for the Get Data action', () => {
 		it('returns the whole parsed response, leaving the module state alone', async () => {
 			const { signal } = new AbortController()

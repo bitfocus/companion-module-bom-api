@@ -19,7 +19,7 @@ function fakeInstance(locations: Location[] = SEARCH_RESULTS) {
 	return {
 		locations: new Map(locations.map((location) => [location.geohash, location])),
 		location: WOODEND,
-		updateData: vi.fn(async (_geohash: string, _signal?: AbortSignal) => {}),
+		updateData: vi.fn(async (_geohash: string) => {}),
 		updateActions: vi.fn(),
 		query: vi.fn(async (type: QueryType, geohash: string, _signal?: AbortSignal) => ({ data: { type, geohash } })),
 		setActionDefinitions: vi.fn<(actions: CompanionActionDefinitions<ActionSchema>) => void>(),
@@ -70,12 +70,11 @@ describe('select location action', () => {
 		expect(field.default).toBe(NO_LOCATIONS)
 	})
 
-	it('fetches the chosen location, passing the action signal through', async () => {
+	it('fetches the chosen location, without the action signal', async () => {
 		const self = fakeInstance()
-		const { signal } = new AbortController()
-		await run(self, 'r1r0fsn', signal)
+		await run(self, 'r1r0fsn')
 		expect(self.location.name).toBe('Melbourne')
-		expect(self.updateData).toHaveBeenCalledExactlyOnceWith('r1r0fsn', signal)
+		expect(self.updateData).toHaveBeenCalledExactlyOnceWith('r1r0fsn')
 	})
 
 	it('redefines the actions, so Get Data defaults to the new location', async () => {
