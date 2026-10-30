@@ -129,6 +129,24 @@ describe('BomAPI', () => {
 		expect(paths().some((path) => path.includes('r1r0fs'))).toBe(false)
 	})
 
+	it('logs why a request failed, rather than an error object stringified as {}', async () => {
+		const log = vi.spyOn(instance, 'log')
+		get.mockImplementationOnce(() => {
+			throw new TypeError('something unexpected')
+		})
+		get.mockResolvedValueOnce({ data: warningsResponse })
+		await instance.getForecastDaily('r1qg2z3')
+		await instance.getForecastDaily('r1qg2z3')
+		expect(log).toHaveBeenCalledWith('warn', 'Daily Forecast request failed: something unexpected')
+		// A response that fails the schema logs each problem zod found, and where
+		expect(log).toHaveBeenCalledWith(
+			'warn',
+			expect.stringMatching(
+				/^Daily Forecast request failed: ✖ .*\n✖ Invalid input: expected object, received undefined\n {2}→ at data\[0\]\.rain\n/s,
+			),
+		)
+	})
+
 	it('does not report a cancelled request as a connection failure', async () => {
 		const updateStatus = vi.spyOn(StatusManager.prototype, 'updateStatus')
 		get.mockRejectedValueOnce(new CanceledError())

@@ -1,6 +1,6 @@
 import type { DropdownChoice } from '@companion-module/base'
 import { isAxiosError } from 'axios'
-import type { z } from 'zod'
+import { z } from 'zod'
 import {
 	ApiErrorResponse,
 	ForecastRequest,
@@ -63,8 +63,12 @@ export function parseGeohash(input: string): string | undefined {
 	return geohash.substring(0, 7)
 }
 
-/** Why a request failed, in the BOM's own words where it gave any, eg "No locations: Location cannot be found." */
+/**
+ * Why a request failed: in the BOM's own words where it gave any, eg "No locations: Location cannot be found.", or
+ * each problem zod found with the response and where, for one that is not the expected shape
+ */
 export function describeError(error: unknown): string {
+	if (error instanceof z.ZodError) return z.prettifyError(error)
 	if (isAxiosError(error) && error.response) {
 		const body = ApiErrorResponse.safeParse(error.response.data)
 		if (body.success) return body.data.errors.map(({ title, detail }) => `${title}: ${detail}`).join(', ')

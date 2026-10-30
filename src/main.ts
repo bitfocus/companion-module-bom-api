@@ -155,9 +155,9 @@ export default class BomAPI extends InstanceBase<ModuleTypes> {
 	 * Log a failed poll request, unless it was cancelled by the action that asked for it. p-queue 10 rejects a task
 	 * whose signal aborts even while it is running, so a cancelled request arrives here like a failed one
 	 */
-	private logRequestFailure(what: string, e: any, signal?: AbortSignal): void {
+	private logRequestFailure(what: string, e: unknown, signal?: AbortSignal): void {
 		if (signal?.aborted) return
-		this.log('warn', `${what} request failed: ${typeof e == 'object' ? JSON.stringify(e) : String(e)}`)
+		this.log('warn', `${what} request failed: ${describeError(e)}`)
 	}
 
 	private locationSearchParams(config: ModuleConfig): string {

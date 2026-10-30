@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AxiosError } from 'axios'
+import { z } from 'zod'
 import { describeError, parseGeohash, QUERIES, QUERY_CHOICES, QueryType } from '../api.js'
 import { httpError, notFoundResponse } from './fixtures.js'
 
@@ -27,6 +28,11 @@ describe('parseGeohash', () => {
 describe('describeError', () => {
 	it("gives the BOM's own explanation where the response has one", () => {
 		expect(describeError(httpError(404, notFoundResponse))).toBe('No locations: Location cannot be found.')
+	})
+
+	it('lists what zod found wrong with a response that is not the expected shape', () => {
+		const result = z.object({ data: z.object({ temp: z.number() }) }).safeParse({ data: { temp: 'hot' } })
+		expect(describeError(result.error)).toBe('✖ Invalid input: expected number, received string\n  → at data.temp')
 	})
 
 	it('falls back to the status for a response without one, and the message for no response', () => {
